@@ -1,0 +1,34 @@
+name: CI workflow
+
+on:
+  push:
+    branches:
+      - main  # Triggers the workflow on push to main
+  pull_request:
+    branches:
+      - main  # Triggers the workflow on PR to main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest  # Specify that the job runs on an Ubuntu machine
+    container: python:3.9-slim  # Use the Python 3.9 slim Docker image for the container
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3  # Checkout the code from the repository
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip  # Upgrade pip to the latest version
+          pip install -r requirements.txt  # Install dependencies from requirements.txt
+      
+      - name: Lint with flake8
+        run: |
+          pip install flake8  # Install flake8 for linting
+          flake8 service --count --select=E9,F63,F7,F82 --show-source --statistics  # Lint with error codes
+          flake8 service --count --max-complexity=10 --max-line-length=127 --statistics  # Lint with complexity and line length limits
+
+      - name: Run unit tests with nose
+        run: |
+          pip install nose  # Install the nose testing framework
+          nosetests -v --with-spec --spec-color --with-coverage --cover-package=app  # Run the unit tests with coverage
