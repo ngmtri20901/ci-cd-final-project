@@ -1,0 +1,86 @@
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: cleanup
+spec:
+  description: This task will clean up a workspace by deleting all the files.
+  workspaces:
+    - name: source  # Name of the workspace to be cleaned
+  steps:
+    - name: remove
+      image: alpine:3  # Alpine image for a minimal environment
+      env:
+        - name: WORKSPACE_SOURCE_PATH
+          value: $(workspaces.source.path)  # Path to the workspace to be cleaned
+      workingDir: $(workspaces.source.path)  # Set the working directory to the source workspace path
+      securityContext:
+        runAsNonRoot: false  # Allow running as root for permission to delete files
+        runAsUser: 0  # Run as root user for permission to delete files
+      script: |
+        #!/usr/bin/env sh
+        set -eu  # Exit on error and treat unset variables as errors
+        echo "Removing all files from ${WORKSPACE_SOURCE_PATH} ..."
+        
+        # Check if the workspace directory exists
+        if [ -d "${WORKSPACE_SOURCE_PATH}" ] ; then
+          # Delete non-hidden files and directories
+          rm -rf "${WORKSPACE_SOURCE_PATH:?}"/*
+          
+          # Delete hidden files and directories (those starting with a dot), excluding ".."
+          rm -rf "${WORKSPACE_SOURCE_PATH}"/.[!.]*
+          
+          # Delete files and directories starting with ".." plus any other character
+          rm -rf "${WORKSPACE_SOURCE_PATH}"/..?*
+        fi
+
+---
+
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: nose
+spec:
+  workspaces:
+    - name: source  # Define the workspace that the task will use
+  params:
+    - name: args  # Arguments to pass to the `nosetests` command
+      description: Arguments to pass to nose
+      type: string
+      default: "-v"  # Default argument is to run tests in verbose mode
+  steps:
+    - name: nosetests
+      image: python:3.9-slim  # Use Python 3.9-slim container
+      workingDir: $(workspaces.source.path)  # Set the working directory to the source workspace path
+      script: |
+        #!/bin/bash
+        set -e  # Exit on any error
+        python -m pip install --upgrade pip wheel  # Upgrade pip and install wheel
+        pip install -r requirements.txt  # Install dependencies
+        nosetests $(params.args)  # Run the tests using nosetests with provided arguments
+
+---
+
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: my-pipeline
+spec:
+  workspaces:
+    - name: source  # Define the workspace to be used in the pipeline
+  tasks:
+    - name: cleanup-task  # First task to clean up the workspace
+      taskRef:
+        name: cleanup  # Reference the cleanup task
+      workspaces:
+        - name: source
+          workspace: source  # Provide the source workspace to be cleaned
+
+    - name: nose-task  # Second task to run tests using nose
+      taskRef:
+        name: nose  # Reference the nose task
+      workspaces:
+        - name: source
+          workspace: source  # Provide the source workspace to be used for tests
+      params:
+        - name: args
+          value: "-v"  # Arguments to pass to the nose command (verbose mode)
